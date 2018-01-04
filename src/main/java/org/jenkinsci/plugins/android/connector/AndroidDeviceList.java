@@ -30,6 +30,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.concurrent.TimeUnit;
 
 import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Maps.newHashMap;
@@ -42,12 +43,12 @@ import static com.google.common.collect.Maps.newHashMap;
  */
 @Extension
 public class AndroidDeviceList implements RootAction, ModelObject {
-    private volatile Multimap<Computer,AndroidDevice> devices = LinkedHashMultimap.create();
+    private volatile Multimap<Computer, AndroidDevice> devices = LinkedHashMultimap.create();
 
     /**
      * List of all the devices.
      */
-    public Multimap<Computer,AndroidDevice> getDevices() {
+    public Multimap<Computer, AndroidDevice> getDevices() {
         return Multimaps.unmodifiableMultimap(devices);
     }
 
@@ -57,7 +58,7 @@ public class AndroidDeviceList implements RootAction, ModelObject {
     public void updateAll(TaskListener listener) {
         Jenkins.getInstance().checkPermission(Jenkins.ADMINISTER);
 
-        Map<Future<List<AndroidDevice>>,Computer> futures = newHashMap();
+        Map<Future<List<AndroidDevice>>, Computer> futures = newHashMap();
 
 
         for (Computer c : Jenkins.getInstance().getComputers()) {
@@ -65,25 +66,25 @@ public class AndroidDeviceList implements RootAction, ModelObject {
                 EnvVars envVars = new EnvVars();
 
                 try {
-                        envVars = c.getEnvironment();
-                        GlobalConfigurationImpl config = new GlobalConfigurationImpl();
-                        String configData = config.getMapping();
-                        if (configData != null) {
-                            envVars.put("MAPPING", configData);
-                        }
-
-                    } catch (Exception exception) {
-                        listener.getLogger().println("Couldn't read configuration" + exception);
-
+                    envVars = c.getEnvironment();
+                    GlobalConfigurationImpl config = new GlobalConfigurationImpl();
+                    String configData = config.getMapping();
+                    if (configData != null) {
+                        envVars.put("MAPPING", configData);
                     }
+
+                } catch (Exception exception) {
+                    listener.getLogger().println("Couldn't read configuration" + exception);
+
+                }
 
                 futures.put(c.getChannel().callAsync(new FetchTask(listener, envVars)), c);
             } catch (Exception e) {
-                e.printStackTrace(listener.error("Failed to list up Android devices on"+c.getName()));
+                e.printStackTrace(listener.error("Failed to list up Android devices on" + c.getName()));
             }
         }
 
-        Multimap<Computer,AndroidDevice> devices = LinkedHashMultimap.create();
+        Multimap<Computer, AndroidDevice> devices = LinkedHashMultimap.create();
         for (Entry<Future<List<AndroidDevice>>, Computer> e : futures.entrySet()) {
             Computer c = e.getValue();
             try {
@@ -92,7 +93,7 @@ public class AndroidDeviceList implements RootAction, ModelObject {
                     d.computer = c;
                 devices.putAll(c, devs);
             } catch (Exception x) {
-                x.printStackTrace(listener.error("Failed to list up Android devices on "+c.getName()));
+                x.printStackTrace(listener.error("Failed to list up Android devices on " + c.getName()));
             }
         }
 
@@ -129,7 +130,7 @@ public class AndroidDeviceList implements RootAction, ModelObject {
         }
 
         synchronized (this) {
-            Multimap<Computer,AndroidDevice> clone = LinkedHashMultimap.create(devices);
+            Multimap<Computer, AndroidDevice> clone = LinkedHashMultimap.create(devices);
             clone.removeAll(c);
             clone.putAll(c, r);
             devices = clone;
@@ -137,7 +138,7 @@ public class AndroidDeviceList implements RootAction, ModelObject {
     }
 
     public synchronized void remove(Computer c) {
-        Multimap<Computer,AndroidDevice> clone = LinkedHashMultimap.create(devices);
+        Multimap<Computer, AndroidDevice> clone = LinkedHashMultimap.create(devices);
         clone.removeAll(c);
         devices = clone;
     }
@@ -180,7 +181,7 @@ public class AndroidDeviceList implements RootAction, ModelObject {
     /**
      * Retrieves {@link AndroidDevice}s connected to a machine.
      */
-    private static class FetchTask implements Callable<List<AndroidDevice>,IOException> {
+    private static class FetchTask implements Callable<List<AndroidDevice>, IOException> {
         private final TaskListener listener;
         private final EnvVars envVars;
         private final String mMappingRegex = "(.*)=(.*)";
@@ -196,7 +197,7 @@ public class AndroidDeviceList implements RootAction, ModelObject {
             String adbCommand = "adb";
 
             try {
-                Runtime.getRuntime().exec(adbCommand +" version");
+                Runtime.getRuntime().exec(adbCommand + " version");
             } catch (Exception any) {
                 listener.error("ADB not in PATH. Will try to read ANDROID_HOME");
 
@@ -218,7 +219,7 @@ public class AndroidDeviceList implements RootAction, ModelObject {
             ArgumentListBuilder adbDevicePropsCommand = new ArgumentListBuilder(command);
             adbDevicePropsCommand.add("devices");
 
-            return  adbDevicePropsCommand;
+            return adbDevicePropsCommand;
         }
 
         //adb -s <device_id> shell getprop
@@ -227,7 +228,16 @@ public class AndroidDeviceList implements RootAction, ModelObject {
             ArgumentListBuilder adbDevicePropsCommand = new ArgumentListBuilder(command);
             adbDevicePropsCommand.add("-s", (String) deviceId, "shell", "getprop");
 
-            return  adbDevicePropsCommand;
+            return adbDevicePropsCommand;
+        }
+
+        //adb restart
+        private ArgumentListBuilder getRestartArgumentsList() {
+            String command = getAdbCommand();
+            ArgumentListBuilder adbDevicePropsCommand = new ArgumentListBuilder(command);
+            adbDevicePropsCommand.add("kill-server");
+
+            return adbDevicePropsCommand;
         }
 
         public List<AndroidDevice> call() throws IOException {
@@ -239,7 +249,7 @@ public class AndroidDeviceList implements RootAction, ModelObject {
 
 
             if (envVars.containsKey("MAPPING")) {
-                    mappings = extractOutputProperties(listener.getLogger(), (String)envVars.get("MAPPING"), mMappingRegex);
+                mappings = extractOutputProperties(listener.getLogger(), (String) envVars.get("MAPPING"), mMappingRegex);
             }
 
             listener.getLogger().println("Getting devices");
@@ -248,14 +258,14 @@ public class AndroidDeviceList implements RootAction, ModelObject {
             Properties androidDevices = extractOutputProperties(listener.getLogger(), connectedDevices, mAdbDevicesRegex);
 
             Set keys = androidDevices.keySet();
-            for(Object deviceId:keys){
-                String deviceProperties = executeCommand(listener.getLogger(), getAndroidDevicePropsArgumentsList((String)deviceId));
+            for (Object deviceId : keys) {
+                String deviceProperties = executeCommand(listener.getLogger(), getAndroidDevicePropsArgumentsList((String) deviceId));
                 Properties androidDeviceProperties = extractOutputProperties(listener.getLogger(), deviceProperties, mAdbDeviceShellGetPropRegex);
 
                 androidDeviceProperties.put("UniqueDeviceID", deviceId);
-                if (mappings.containsKey((String)deviceId)) {
-                    androidDeviceProperties.put("AlternativeName", mappings.getProperty((String)deviceId));
-                    mappings.remove((String)deviceId);
+                if (mappings.containsKey((String) deviceId)) {
+                    androidDeviceProperties.put("AlternativeName", mappings.getProperty((String) deviceId));
+                    mappings.remove((String) deviceId);
                 }
 
                 androidDevicesList.add(new AndroidDevice(androidDeviceProperties));
@@ -263,11 +273,11 @@ public class AndroidDeviceList implements RootAction, ModelObject {
 
             //add offline devices
             Set offline = mappings.keySet();
-            for (Object device:offline) {
+            for (Object device : offline) {
 
                 Properties androidDeviceProperties = new Properties();
-                androidDeviceProperties.put("UniqueDeviceID", (String)device);
-                androidDeviceProperties.put("AlternativeName", mappings.getProperty((String)device) + " (unreachable)");
+                androidDeviceProperties.put("UniqueDeviceID", (String) device);
+                androidDeviceProperties.put("AlternativeName", mappings.getProperty((String) device) + " (unreachable)");
 
                 androidDevicesList.add(new AndroidDevice(androidDeviceProperties));
             }
@@ -275,34 +285,59 @@ public class AndroidDeviceList implements RootAction, ModelObject {
             return androidDevicesList;
         }
 
-        public String executeCommand(PrintStream logger, ArgumentListBuilder arguments) throws IOException {
-
+        public void restartADBCommand(PrintStream logger) throws IOException {
+            logger.println("Restart adb server, adb kill-server");
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
             try {
-                logger.println("Executing " + arguments);
-
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
                 int exit = new LocalLauncher(listener).launch()
-                        .cmds(arguments).stdout(out).stderr(logger).join();
-
-                if (exit != 0) {
-                    logger.println(arguments + " failed to execute:" + exit);
-                    logger.write(out.toByteArray());
-                    logger.println();
-                    return "";
-                }
-
-                return new String(out.toByteArray(), "ISO-8859-1");
-            } catch (InterruptedException e) {
-                throw new IOException2("Interrupted while listing up devices",e);
+                        .cmds(getRestartArgumentsList()).stdout(out).stderr(logger).join();
+                logger.write(out.toByteArray());
+                TimeUnit.SECONDS.sleep(8);
+            }catch(InterruptedException e) {
+                throw new IOException2("Interrupted while restart adb", e);
             }
+
+
         }
 
-        private Properties extractOutputProperties(PrintStream logger, String output, String regex) throws  IOException {
+        public String executeCommand(PrintStream logger, ArgumentListBuilder arguments) throws IOException {
+            logger.println("Executing " + arguments);
+            int rerun = 5;
+            int count = 1;
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            try {
+                while (count < rerun) {
+                    int exit = new LocalLauncher(listener).launch()
+                            .cmds(arguments).stdout(out).stderr(logger).join();
+                    if (exit != 0) {
+                        logger.println(arguments + " failed to execute:" + exit);
+                        logger.write(out.toByteArray());
+                        logger.println();
+                        restartADBCommand(logger);
+                        count += 1;
+                    } else if(arguments.toList().contains("devices")){
+                        Pattern regexPattern = Pattern.compile(mAdbDevicesRegex);
+                        Matcher matcher = regexPattern.matcher(out.toString("ISO-8859-1"));
+                        if(!matcher.find()){
+                            restartADBCommand(logger);
+                            count += 1;
+                        }else
+                            break;
+                    }else
+                        break;
+                }
+            } catch (InterruptedException e) {
+                throw new IOException2("Interrupted while listing up devices", e);
+            }
+            return new String(out.toByteArray(), "ISO-8859-1");
+        }
+
+        private Properties extractOutputProperties(PrintStream logger, String output, String regex) throws IOException {
             Properties props = new Properties();
             Pattern regexPattern = Pattern.compile(regex);
             Matcher matcher = regexPattern.matcher(output);
 
-            while(matcher.find()) {
+            while (matcher.find()) {
                 props.put(matcher.group(1), matcher.group(2));
             }
 
@@ -310,7 +345,7 @@ public class AndroidDeviceList implements RootAction, ModelObject {
         }
     }
 
-    public static final PermissionGroup GROUP = new PermissionGroup(AndroidDeviceList.class,Messages._AndroidDeviceList_PermissionGroup_Title());
-    public static final Permission READ = new Permission(GROUP,"Read",Messages._AndroidList_ReadPermission(),Jenkins.READ);
-    public static final Permission DEPLOY = new Permission(GROUP,"Deploy",Messages._AndroidList_DeployPermission(),Jenkins.ADMINISTER);
+    public static final PermissionGroup GROUP = new PermissionGroup(AndroidDeviceList.class, Messages._AndroidDeviceList_PermissionGroup_Title());
+    public static final Permission READ = new Permission(GROUP, "Read", Messages._AndroidList_ReadPermission(), Jenkins.READ);
+    public static final Permission DEPLOY = new Permission(GROUP, "Deploy", Messages._AndroidList_DeployPermission(), Jenkins.ADMINISTER);
 }

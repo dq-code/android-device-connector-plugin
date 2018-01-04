@@ -25,7 +25,7 @@ public class PeriodicLister extends AsyncPeriodicWork {
 
     @Override
     protected void execute(TaskListener listener) throws IOException, InterruptedException {
-        deviceList.updateAll(listener);
+        //deviceList.updateAll(listener);
     }
 
     @Override
